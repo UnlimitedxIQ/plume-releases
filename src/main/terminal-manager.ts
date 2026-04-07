@@ -55,12 +55,8 @@ export class TerminalManager {
       claudeArgs.push('--system-prompt-file', systemPromptFile)
     }
 
-    // Use cmd.exe with "mode con" to set terminal size before launching Claude
-    // Quote each arg that contains spaces
-    const quotedArgs = claudeArgs.map(a => a.includes(' ') || a.includes('\\') ? `"${a}"` : a)
-    const claudeCmd = `mode con cols=${cols} lines=${rows} & "${claudePath}" ${quotedArgs.join(' ')}`
-
-    const proc = spawn('conhost.exe', ['cmd.exe', '/c', claudeCmd], {
+    // Use conhost.exe directly — gives Claude a real Windows console
+    const proc = spawn('conhost.exe', [claudePath, ...claudeArgs], {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: homedir(),
       windowsHide: true,
