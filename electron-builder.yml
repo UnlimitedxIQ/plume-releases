@@ -1,0 +1,71 @@
+appId: com.plume.app
+productName: Plume
+copyright: Copyright © 2026 Bryson
+
+publish:
+  provider: github
+  owner: UnlimitedxIQ
+  repo: plume-releases
+
+directories:
+  buildResources: resources
+  output: dist
+
+files:
+  - out/**/*
+  - "!**/*.map"
+
+extraResources:
+  - from: resources/winpty
+    to: winpty
+    filter:
+      - "**/*"
+  - from: resources/claude-cli
+    to: claude-cli
+    filter:
+      - "**/*"
+  - from: resources/codex-cli
+    to: codex-cli
+    filter:
+      - "**/*"
+
+asarUnpack:
+  - "node_modules/better-sqlite3/**"
+
+mac:
+  category: public.app-category.education
+  icon: resources/icon.icns
+  target:
+    - dmg
+    - zip
+  darkModeSupport: true
+
+dmg:
+  background: resources/dmg-background.png
+  iconSize: 80
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  icon: resources/icon.ico
+  target:
+    - nsis
+  artifactName: "Plume-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  installerHeaderIcon: resources/icon.ico
+
+linux:
+  icon: resources/icon.png
+  target:
+    - AppImage
+  category: Education
