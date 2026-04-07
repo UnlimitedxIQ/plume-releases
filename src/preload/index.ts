@@ -76,7 +76,7 @@ const api = {
   },
 
   // Terminal (embedded Claude CLI)
-  terminalStart: (data: { tabId: string; systemPrompt?: string }) =>
+  terminalStart: (data: { tabId: string; systemPrompt?: string; cols?: number; rows?: number }) =>
     ipcRenderer.send('terminal:start', data),
   terminalWrite: (data: { tabId: string; data: string }) =>
     ipcRenderer.send('terminal:write', data),
@@ -84,6 +84,7 @@ const api = {
     ipcRenderer.send('terminal:resize', data),
   terminalKill: (tabId: string) => ipcRenderer.send('terminal:kill', tabId),
   terminalHasSession: (tabId: string) => ipcRenderer.invoke('terminal:has-session', tabId),
+  terminalGetBuffer: (tabId: string) => ipcRenderer.invoke('terminal:get-buffer', tabId),
   onTerminalData: (tabId: string, callback: (data: string) => void) => {
     const channel = `terminal:data:${tabId}`
     const handler = (_event: unknown, data: string) => callback(data)

@@ -256,10 +256,10 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   terminalManager = new TerminalManager(mainWindow)
 
-  ipcMain.on('terminal:start', (_event, { tabId, systemPrompt }: { tabId: string; systemPrompt?: string }) => {
+  ipcMain.on('terminal:start', (_event, { tabId, systemPrompt, cols, rows }: { tabId: string; systemPrompt?: string; cols?: number; rows?: number }) => {
     const vaultContext = vault.toSystemPromptContext()
     const fullPrompt = (systemPrompt ?? '') + vaultContext
-    terminalManager!.startSession(tabId, fullPrompt)
+    terminalManager!.startSession(tabId, fullPrompt, cols ?? 120, rows ?? 30)
   })
 
   ipcMain.on('terminal:write', (_event, { tabId, data }: { tabId: string; data: string }) => {
@@ -276,6 +276,10 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('terminal:has-session', (_event, tabId: string) => {
     return terminalManager!.hasSession(tabId)
+  })
+
+  ipcMain.handle('terminal:get-buffer', (_event, tabId: string) => {
+    return terminalManager!.getBuffer(tabId)
   })
 
   // CEO mode — process message through dispatcher + workers

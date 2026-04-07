@@ -37,11 +37,12 @@ export default function TerminalPanel({ tabId }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
-  const startedRef = useRef(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!containerRef.current || termRef.current) return
+    if (!containerRef.current) return
+    // If terminal already exists for this mount, skip
+    if (termRef.current) return
 
     const api = (window as unknown as { api: Record<string, (...args: unknown[]) => unknown> }).api
 
@@ -52,7 +53,7 @@ export default function TerminalPanel({ tabId }: TerminalPanelProps) {
       lineHeight: 1.4,
       cursorBlink: true,
       cursorStyle: 'bar',
-      scrollback: 5000,
+      scrollback: 10000,
       convertEol: true,
     })
 
@@ -69,13 +70,9 @@ export default function TerminalPanel({ tabId }: TerminalPanelProps) {
       api.terminalWrite({ tabId, data })
     })
 
-    // Receive output from main process — first data means loading done
-    let gotFirstData = false
+    // Receive live output from main process
     const unsubData = api.onTerminalData(tabId, (data: string) => {
-      if (!gotFirstData) {
-        gotFirstData = true
-        setLoading(false)
-      }
+      setLoading(false)
       term.write(data)
     }) as () => void
 
@@ -84,11 +81,24 @@ export default function TerminalPanel({ tabId }: TerminalPanelProps) {
       term.write(`\r\n\x1b[33m[Session ended with code ${info.code}]\x1b[0m\r\n`)
     }) as () => void
 
-    // Start Claude CLI session
-    if (!startedRef.current) {
-      startedRef.current = true
-      api.terminalStart({ tabId, systemPrompt: BASE_SYSTEM_PROMPT })
-    }
+    // Check if session already exists — if so, replay buffer
+    // If not, start a new one with the measured terminal dimensions
+    ;(async () => {
+      const hasSession = await api.terminalHasSession(tabId) as boolean
+      if (hasSession) {
+        const buffer = await api.terminalGetBuffer(tabId) as string
+        if (buffer) {
+          term.write(buffer)
+        }
+        setLoading(false)
+      } else {
+        // Measure actual terminal dimensions from xterm.js
+        const dims = fit.proposeDimensions()
+        const cols = dims?.cols ?? 120
+        const rows = dims?.rows ?? 30
+        api.terminalStart({ tabId, systemPrompt: BASE_SYSTEM_PROMPT, cols, rows })
+      }
+    })()
 
     // Handle resize
     const observer = new ResizeObserver(() => {
@@ -112,7 +122,6 @@ export default function TerminalPanel({ tabId }: TerminalPanelProps) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#0a0f0d' }}>
-      {/* Loading overlay */}
       {loading && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 10,
@@ -135,8 +144,6 @@ export default function TerminalPanel({ tabId }: TerminalPanelProps) {
           </p>
         </div>
       )}
-
-      {/* Terminal container */}
       <div
         ref={containerRef}
         style={{

@@ -16,10 +16,6 @@ files:
   - "!**/*.map"
 
 extraResources:
-  - from: resources/winpty
-    to: winpty
-    filter:
-      - "**/*"
   - from: resources/claude-cli
     to: claude-cli
     filter:
