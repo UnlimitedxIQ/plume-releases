@@ -53,22 +53,17 @@ export class TerminalManager {
     if (systemPrompt) {
       systemPromptFile = join(tmpdir(), `plume-sp-${tabId.slice(0, 8)}-${Date.now()}.txt`)
       writeFileSync(systemPromptFile, systemPrompt, 'utf-8')
-      claudeArgs.push('--system-prompt-file', `"${systemPromptFile}"`)
+      claudeArgs.push('--system-prompt-file', systemPromptFile)
     }
 
-    // Write a batch file that sets console size then launches Claude
-    // Quotes paths with JSON.stringify pattern to handle backslashes
-    const batFile = join(tmpdir(), `plume-launch-${tabId.slice(0, 8)}-${Date.now()}.bat`)
-    const batContent = `@echo off\r\nmode con cols=${cols} lines=${rows}\r\n"${claudePath}" ${claudeArgs.join(' ')}\r\n`
-    writeFileSync(batFile, batContent, 'utf-8')
-
-    const proc = spawn('conhost.exe', ['cmd.exe', '/c', batFile], {
+    // Use conhost.exe directly — gives Claude a real console at its default 120x30
+    const proc = spawn('conhost.exe', [claudePath, ...claudeArgs], {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: homedir(),
       windowsHide: true,
     })
 
-    const session: TerminalSession = { proc, systemPromptFile, batFile, outputBuffer: [] }
+    const session: TerminalSession = { proc, systemPromptFile, batFile: null, outputBuffer: [] }
     this.sessions.set(tabId, session)
 
     // Buffer and relay stdout

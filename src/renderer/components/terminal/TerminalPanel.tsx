@@ -55,12 +55,17 @@ export default function TerminalPanel({ tabId }: TerminalPanelProps) {
       cursorStyle: 'bar',
       scrollback: 10000,
       convertEol: true,
+      cols: 120,  // Match conhost default
     })
 
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(containerRef.current)
-    fit.fit()
+    // Only fit rows to container, keep cols at 120 to match conhost
+    const dims = fit.proposeDimensions()
+    if (dims) {
+      term.resize(120, dims.rows)
+    }
 
     termRef.current = term
     fitRef.current = fit
@@ -100,9 +105,12 @@ export default function TerminalPanel({ tabId }: TerminalPanelProps) {
       }
     })()
 
-    // Handle resize
+    // Handle resize — only adjust rows, keep cols at 120
     const observer = new ResizeObserver(() => {
-      fit.fit()
+      const dims = fit.proposeDimensions()
+      if (dims) {
+        term.resize(120, dims.rows)
+      }
     })
     observer.observe(containerRef.current)
 
