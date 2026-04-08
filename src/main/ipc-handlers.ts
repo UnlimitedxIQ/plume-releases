@@ -274,12 +274,12 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     terminalManager!.killSession(tabId)
   })
 
-  ipcMain.handle('terminal:has-session', (_event, tabId: string) => {
-    return terminalManager!.hasSession(tabId)
+  ipcMain.on('terminal:park', (_event, tabId: string) => {
+    terminalManager!.parkSession(tabId)
   })
 
-  ipcMain.handle('terminal:get-buffer', (_event, tabId: string) => {
-    return terminalManager!.getBuffer(tabId)
+  ipcMain.handle('terminal:has-session', (_event, tabId: string) => {
+    return terminalManager!.hasActiveProcess(tabId)
   })
 
   // CEO mode — process message through dispatcher + workers

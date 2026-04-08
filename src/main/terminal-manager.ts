@@ -5,6 +5,7 @@ import { writeFileSync, unlinkSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { app, type BrowserWindow } from 'electron'
 import { execSync } from 'child_process'
+import { randomUUID } from 'crypto'
 
 function getClaudePath(): string {
   const bundled = join(process.resourcesPath ?? app.getAppPath(), 'claude-cli', 'claude.exe')
@@ -23,86 +24,76 @@ function getClaudePath(): string {
 interface TerminalSession {
   proc: ChildProcess
   systemPromptFile: string | null
-  batFile: string | null
-  outputBuffer: string[]  // Stores all output for replay on tab switch
 }
-
-const MAX_BUFFER_LINES = 5000
 
 /**
  * Manages persistent Claude CLI terminal sessions — one per tab.
- * Uses conhost.exe to give Claude a real Windows console/PTY.
- * Buffers output so tabs can be switched without losing state.
+ * Uses conhost.exe for a real console + --session-id/--resume for continuity.
  */
 export class TerminalManager {
   private sessions: Map<string, TerminalSession> = new Map()
+  private sessionIds: Map<string, string> = new Map()  // tabId → Claude session UUID
   private window: BrowserWindow
 
   constructor(window: BrowserWindow) {
     this.window = window
   }
 
-  startSession(tabId: string, systemPrompt?: string, cols = 120, rows = 30): void {
-    // Don't restart if already running
-    if (this.hasSession(tabId)) return
+  startSession(tabId: string, systemPrompt?: string): void {
+    // Kill existing process if running (but keep sessionId)
+    const existing = this.sessions.get(tabId)
+    if (existing && !existing.proc.killed) {
+      existing.proc.kill('SIGTERM')
+    }
 
     const claudePath = getClaudePath()
     const claudeArgs = ['--verbose', '--dangerously-skip-permissions']
 
     let systemPromptFile: string | null = null
-    if (systemPrompt) {
-      systemPromptFile = join(tmpdir(), `plume-sp-${tabId.slice(0, 8)}-${Date.now()}.txt`)
-      writeFileSync(systemPromptFile, systemPrompt, 'utf-8')
-      claudeArgs.push('--system-prompt-file', systemPromptFile)
+    const existingSessionId = this.sessionIds.get(tabId)
+
+    if (existingSessionId) {
+      // Resume existing session
+      claudeArgs.push('--resume', existingSessionId)
+    } else {
+      // New session — set a controlled session ID
+      const sessionId = randomUUID()
+      this.sessionIds.set(tabId, sessionId)
+      claudeArgs.push('--session-id', sessionId)
+
+      if (systemPrompt) {
+        systemPromptFile = join(tmpdir(), `plume-sp-${tabId.slice(0, 8)}-${Date.now()}.txt`)
+        writeFileSync(systemPromptFile, systemPrompt, 'utf-8')
+        claudeArgs.push('--system-prompt-file', systemPromptFile)
+      }
     }
 
-    // Use conhost.exe directly — gives Claude a real console at its default 120x30
     const proc = spawn('conhost.exe', [claudePath, ...claudeArgs], {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: homedir(),
       windowsHide: true,
     })
 
-    const session: TerminalSession = { proc, systemPromptFile, batFile: null, outputBuffer: [] }
+    const session: TerminalSession = { proc, systemPromptFile }
     this.sessions.set(tabId, session)
 
-    // Buffer and relay stdout
+    // Relay stdout
     proc.stdout?.on('data', (chunk: Buffer) => {
-      const data = chunk.toString('utf-8')
-      session.outputBuffer.push(data)
-      // Trim buffer if too large
-      if (session.outputBuffer.length > MAX_BUFFER_LINES) {
-        session.outputBuffer.splice(0, session.outputBuffer.length - MAX_BUFFER_LINES)
-      }
-      this.window.webContents.send(`terminal:data:${tabId}`, data)
+      this.window.webContents.send(`terminal:data:${tabId}`, chunk.toString('utf-8'))
     })
 
+    // Relay stderr
     proc.stderr?.on('data', (chunk: Buffer) => {
-      const data = chunk.toString('utf-8')
-      session.outputBuffer.push(data)
-      if (session.outputBuffer.length > MAX_BUFFER_LINES) {
-        session.outputBuffer.splice(0, session.outputBuffer.length - MAX_BUFFER_LINES)
-      }
-      this.window.webContents.send(`terminal:data:${tabId}`, data)
+      this.window.webContents.send(`terminal:data:${tabId}`, chunk.toString('utf-8'))
     })
 
     proc.on('close', (code) => {
       this.window.webContents.send(`terminal:exit:${tabId}`, { code })
-      // Don't cleanup — keep buffer for display
     })
 
     proc.on('error', (err) => {
       this.window.webContents.send(`terminal:exit:${tabId}`, { code: -1, error: err.message })
     })
-  }
-
-  /**
-   * Get buffered output for replay when a tab is re-mounted.
-   */
-  getBuffer(tabId: string): string {
-    const session = this.sessions.get(tabId)
-    if (!session) return ''
-    return session.outputBuffer.join('')
   }
 
   write(tabId: string, data: string): void {
@@ -112,38 +103,43 @@ export class TerminalManager {
     }
   }
 
-  resize(_tabId: string, _cols: number, _rows: number): void {
-    // conhost doesn't support dynamic resize via pipes
+  /**
+   * Park a session: kill the process but keep the session ID for resume.
+   */
+  parkSession(tabId: string): void {
+    const session = this.sessions.get(tabId)
+    if (session) {
+      if (!session.proc.killed) {
+        session.proc.kill('SIGTERM')
+      }
+      if (session.systemPromptFile) {
+        try { unlinkSync(session.systemPromptFile) } catch {}
+      }
+      this.sessions.delete(tabId)
+    }
+    // Keep sessionIds entry — needed for --resume on reopen
   }
 
-  hasSession(tabId: string): boolean {
+  /**
+   * Permanently delete a session and its session ID.
+   */
+  killSession(tabId: string): void {
+    this.parkSession(tabId)
+    this.sessionIds.delete(tabId)
+  }
+
+  hasActiveProcess(tabId: string): boolean {
     const session = this.sessions.get(tabId)
     return !!session && !session.proc.killed
   }
 
-  killSession(tabId: string): void {
-    const session = this.sessions.get(tabId)
-    if (!session) return
-    if (!session.proc.killed) {
-      session.proc.kill('SIGTERM')
-    }
-    this.cleanup(tabId)
+  hasSessionId(tabId: string): boolean {
+    return this.sessionIds.has(tabId)
   }
 
   killAll(): void {
     for (const tabId of this.sessions.keys()) {
       this.killSession(tabId)
     }
-  }
-
-  private cleanup(tabId: string): void {
-    const session = this.sessions.get(tabId)
-    if (session?.systemPromptFile) {
-      try { unlinkSync(session.systemPromptFile) } catch {}
-    }
-    if (session?.batFile) {
-      try { unlinkSync(session.batFile) } catch {}
-    }
-    this.sessions.delete(tabId)
   }
 }

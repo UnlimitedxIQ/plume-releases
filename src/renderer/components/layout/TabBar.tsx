@@ -34,7 +34,9 @@ export default function TabBar() {
   function handleClose(e: React.MouseEvent, tabId: string) {
     e.stopPropagation()
     removeTab(tabId)
-    ipc.providerKillSession(tabId)
+    // Park the terminal session — keeps session ID for --resume on reopen
+    const api = (window as unknown as { api: Record<string, (...a: unknown[]) => void> }).api
+    if (api.terminalPark) api.terminalPark(tabId)
   }
 
   function startRename(e: React.MouseEvent, tabId: string, currentName: string) {

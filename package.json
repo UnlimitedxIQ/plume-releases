@@ -1,6 +1,6 @@
 {
   "name": "plume",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Plume — AI assistant for University of Oregon students",
   "main": "./out/main/index.js",
   "scripts": {

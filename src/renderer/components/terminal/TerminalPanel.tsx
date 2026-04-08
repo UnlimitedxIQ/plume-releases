@@ -86,24 +86,8 @@ export default function TerminalPanel({ tabId }: TerminalPanelProps) {
       term.write(`\r\n\x1b[33m[Session ended with code ${info.code}]\x1b[0m\r\n`)
     }) as () => void
 
-    // Check if session already exists — if so, replay buffer
-    // If not, start a new one with the measured terminal dimensions
-    ;(async () => {
-      const hasSession = await api.terminalHasSession(tabId) as boolean
-      if (hasSession) {
-        const buffer = await api.terminalGetBuffer(tabId) as string
-        if (buffer) {
-          term.write(buffer)
-        }
-        setLoading(false)
-      } else {
-        // Measure actual terminal dimensions from xterm.js
-        const dims = fit.proposeDimensions()
-        const cols = dims?.cols ?? 120
-        const rows = dims?.rows ?? 30
-        api.terminalStart({ tabId, systemPrompt: BASE_SYSTEM_PROMPT, cols, rows })
-      }
-    })()
+    // Always start/resume session — the manager decides if new or --resume
+    api.terminalStart({ tabId, systemPrompt: BASE_SYSTEM_PROMPT })
 
     // Handle resize — only adjust rows, keep cols at 120
     const observer = new ResizeObserver(() => {

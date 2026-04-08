@@ -83,6 +83,7 @@ const api = {
   terminalResize: (data: { tabId: string; cols: number; rows: number }) =>
     ipcRenderer.send('terminal:resize', data),
   terminalKill: (tabId: string) => ipcRenderer.send('terminal:kill', tabId),
+  terminalPark: (tabId: string) => ipcRenderer.send('terminal:park', tabId),
   terminalHasSession: (tabId: string) => ipcRenderer.invoke('terminal:has-session', tabId),
   terminalGetBuffer: (tabId: string) => ipcRenderer.invoke('terminal:get-buffer', tabId),
   onTerminalData: (tabId: string, callback: (data: string) => void) => {
